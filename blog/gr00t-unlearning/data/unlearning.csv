@@ -1,0 +1,20 @@
+variant,method,setting,outcome,sr_retain_A,A_ci_low,A_ci_high,sr_forget_B,B_ci_low,B_ci_high,forget_efficacy,retain_ratio,oracle_gap,p_forget_vs_parent,probe_forget_ratio,probe_B_final,train_minutes,peak_gpu_gb,note
+salun-1e-4,SalUn,lr 1e-4,Clean forget,0.98,0.895,0.996,0.0,0,0.071,1.0,0.98,0.0,1.0e-27,0.558,1.4568,19.6,34.9,updated 50% of weights (saliency mask)
+salun-1e-5,SalUn,lr 1e-5,Clean forget,0.94,0.838,0.979,0.0,0,0.071,1.0,0.94,0.02,1.0e-27,0.411,1.0762,19.6,34.9,updated 50% of weights (saliency mask)
+salun-3e-5,SalUn,lr 3e-5,Clean forget,1.0,0.929,1.0,0.0,0,0.071,1.0,1.0,0.01,1.0e-27,0.495,1.2927,19.8,34.9,updated 50% of weights (saliency mask)
+ssd-10,SSD,α 10,No effect,1.0,0.929,1.0,0.98,0.895,0.996,0.0,1.0,0.5,1.0e+00,0.001,0.0125,,,dampened 0.50% of weights
+ssd-20,SSD,α 20,No effect,1.0,0.929,1.0,0.98,0.895,0.996,0.0,1.0,0.5,1.0e+00,0.0,0.0109,,,dampened 0.13% of weights
+ssd-5,SSD,α 5,No effect,1.0,0.929,1.0,0.98,0.895,0.996,0.0,1.0,0.5,1.0e+00,0.003,0.0179,,,dampened 2.03% of weights
+ga-1e-4,Gradient ascent,lr 1e-4,Collapse,0.0,0,0.071,0.0,0,0.071,1.0,0.0,0.49,1.0e-27,,,18.7,33.4,training diverged (probe loss ~1e6-1e13)
+ga-1e-5,Gradient ascent,lr 1e-5,Collapse,0.0,0,0.071,0.0,0,0.071,1.0,0.0,0.49,1.0e-27,,,18.7,33.4,training diverged (probe loss ~1e6-1e13)
+ga-3e-5,Gradient ascent,lr 3e-5,Collapse,0.0,0,0.071,0.0,0,0.071,1.0,0.0,0.49,1.0e-27,,,18.4,33.4,training diverged (probe loss ~1e6-1e13)
+graddiff-1e-4,GradDiff,lr 1e-4,Collapse,0.0,0,0.071,0.0,0,0.071,1.0,0.0,0.49,1.0e-27,,,30.5,33.4,training diverged (probe loss ~1e6-1e13)
+graddiff-1e-5,GradDiff,lr 1e-5,Collapse,0.0,0,0.071,0.0,0,0.071,1.0,0.0,0.49,1.0e-27,,,29.5,33.4,training diverged (probe loss ~1e6-1e13)
+graddiff-3e-5,GradDiff,lr 3e-5,Collapse,0.0,0,0.071,0.0,0,0.071,1.0,0.0,0.49,1.0e-27,,,29.9,33.4,training diverged (probe loss ~1e6-1e13)
+purge,Purge (no-op baseline),-,Baseline,1.0,0.929,1.0,0.98,0.895,0.996,0.0,1.0,0.5,1.0e+00,,,,,
+npo-1e-4,NPO,lr 1e-4,Failed to run,,,,,,,,,,,,,,,OOM on 48 GB
+npo-1e-5,NPO,lr 1e-5,Failed to run,,,,,,,,,,,,,,,OOM on 48 GB
+npo-3e-5,NPO,lr 3e-5,Failed to run,,,,,,,,,,,,,,,OOM on 48 GB
+npo-3e-5-beta1,NPO,"lr 3e-5, β 1",Failed to run,,,,,,,,,,,,,,,OOM on 48 GB
+vlaforget-2e-4,VLA-Forget,lr 2e-4,Failed to run,,,,,,,,,,,,,,,batching bug
+vlaforget-5e-5,VLA-Forget,lr 5e-5,Failed to run,,,,,,,,,,,,,,,batching bug
