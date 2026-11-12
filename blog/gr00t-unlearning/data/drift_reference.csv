@@ -1,0 +1,4 @@
+drift,size_rel_tauB,cos_tauB,fisher_B_over_A,dit_share
+Learning A (tauA),1.06,0.0668,0.788,0.747
+Learning B (tauB),1,1,0.806,0.783
+Random direction,,-1.88e-05,0.82,0.837

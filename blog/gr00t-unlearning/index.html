@@ -107,14 +107,17 @@
 
 <div class="gu">
   <header class="gu-sec" id="top">
-    <p class="post-date">10 November 2026 · VLA unlearning, part 1</p>
+    <p class="post-date">10 November 2026 · updated 12 November 2026 · VLA unlearning, part 1</p>
     <h1>Forgetting a task in GR00T: first unlearning results</h1>
     <p class="gu-lede">After learning tasks A then B, SalUn (lr 3e-5) takes task B from
       <b class="gu-num" data-draw="parentB" data-source="references" data-field="sr_B" data-where="role=before unlearning">—</b> to
       <b class="gu-num" data-draw="salunB" data-source="unlearning" data-field="sr_forget_B" data-where="variant=salun-3e-5">—</b> success
       while task A stays at <b class="gu-num" data-draw="salunA" data-source="unlearning" data-field="sr_retain_A" data-where="variant=salun-3e-5">—</b>.
-      Gradient ascent and GradDiff wipe out both tasks, and SSD leaves the policy unchanged.</p>
-    <p class="gu-muted">Calibration run, LIBERO-Goal in simulation. Success rates are out of 50 rollouts, shown as a fraction with a 95% Wilson interval.</p>
+      SSD, once fixed to compare against the kept task only, does the same: B falls to
+      <b class="gu-num" data-draw="ssdB" data-source="unlearning" data-field="sr_forget_B" data-where="variant=ssd-retain">—</b> and A stays at
+      <b class="gu-num" data-draw="ssdA" data-source="unlearning" data-field="sr_retain_A" data-where="variant=ssd-retain">—</b>.
+      Gradient ascent, GradDiff and NPO break the policy at every learning rate we tried. And in weight space, none of the methods undoes the learning of B.</p>
+    <p class="gu-muted">Calibration run, LIBERO-Goal in simulation. Success rates are out of 50 rollouts, shown as a fraction with a 95% Wilson interval. Updated 12 November 2026 with the fixed SSD, NPO, a lower learning-rate sweep and the first weight-drift measurements.</p>
   </header>
 
   <section class="gu-sec" id="setup">
@@ -152,7 +155,7 @@
   </section>
 
   <section class="gu-sec" id="unlearning">
-    <h2>Unlearning B: only SalUn forgets B and keeps A</h2>
+    <h2>Unlearning B: SalUn and the fixed SSD forget B and keep A</h2>
     <p>Each bar is the success rate after unlearning B, with its 95% interval. The goal is the retrain oracle: A stays high and B drops to zero.</p>
     <div class="gu-legend">
       <span><i data-swatch="0"></i>Task A, kept (higher is better)</span><span><i data-swatch="1"></i>Task B, forgotten (lower is better)</span>
@@ -173,15 +176,42 @@
         <tbody data-draw="unlearnTable"></tbody>
       </table>
     </div>
-    <p class="gu-muted">Gradient ascent and GradDiff also reach zero on B, but only because the policy is destroyed: A falls to zero too and the probe loss diverges to between 10<sup>6</sup> and 10<sup>13</sup>. NPO and VLA-Forget did not run in this calibration: NPO ran out of memory on a 48 GB GPU, and VLA-Forget hit a batching bug that has been fixed since.</p>
+    <p class="gu-muted">Gradient ascent, GradDiff and NPO also reach zero on B, but only because the policy is destroyed: A falls to zero too. Lowering the learning rate does not open a useful window: at 1e-7 nothing is forgotten, and from 3e-7 task A already breaks. The original SSD compared against all data and dampened too few weights to matter; comparing against the kept task only (retain reference) fixes it. One NPO run (lr 1e-6) lost task A instead of task B and is being checked. VLA-Forget ran out of memory on a shared 48 GB GPU and will run on a 96 GB GPU.</p>
   </section>
 
+
+  <section class="gu-sec" id="weight-drift">
+    <h2>Unlearning does not undo learning</h2>
+    <p>Learning task B moved the weights by a vector τ<sub>B</sub>. If unlearning simply reversed that, the model would land back on the retrain oracle, which never saw B. It does not. SalUn removes only
+      <b class="gu-num" data-draw="salunUndo" data-source="unlearning" data-field="proj_on_tauB" data-where="variant=salun-3e-5">—</b> of τ<sub>B</sub>, and the fixed SSD
+      <b class="gu-num" data-draw="ssdUndo" data-source="unlearning" data-field="proj_on_tauB" data-where="variant=ssd-retain">—</b>.
+      Both end up at least as far from the oracle's weights as the model was before unlearning, even though they behave exactly like it.</p>
+    <p>The direction is not random either. Every update leans slightly against τ<sub>B</sub> (cosine
+      <b class="gu-num" data-draw="salunCos" data-source="unlearning" data-field="cos_tauB" data-where="variant=salun-3e-5">—</b> for SalUn), about a thousand times more than a random direction
+      (<b class="gu-num" data-draw="rndCos" data-source="drift_reference" data-field="cos_tauB" data-where="drift=Random direction">—</b>). Learning A and learning B themselves are nearly orthogonal (cosine
+      <b class="gu-num" data-draw="tauCos" data-source="drift_reference" data-field="cos_tauB" data-where="drift=Learning A (tauA)">—</b>).</p>
+    <p class="gu-muted">Distance from the retrain oracle in weight space, in units of ‖τ<sub>B</sub>‖. 1 is where the model was before unlearning, 0 is the oracle. Only methods that forget B cleanly are shown.</p>
+    <div class="gu-chart" id="oracle-dist" data-draw="oracleDist" data-source="unlearning"></div>
+    <div class="gu-scroll">
+      <table id="drift-table" data-source="unlearning" data-row-key="variant">
+        <thead><tr>
+          <th data-field="method">Method</th><th data-field="setting">Setting</th><th data-field="outcome">Outcome</th>
+          <th class="gu-r" data-field="update_size_rel">Update size (× ‖τ<sub>B</sub>‖)</th><th class="gu-r">Share of τ<sub>B</sub> undone</th>
+          <th class="gu-r" data-field="cos_tauB">Cosine with τ<sub>B</sub></th><th class="gu-r" data-field="dist_to_oracle">Distance to oracle</th>
+          <th class="gu-r" data-field="dit_share">Share in action head</th>
+        </tr></thead>
+        <tbody data-draw="driftTable"></tbody>
+      </table>
+    </div>
+    <p class="gu-muted">For comparison, learning B puts <b class="gu-num" data-draw="tauBDit" data-source="drift_reference" data-field="dit_share" data-where="drift=Learning B (tauB)">—</b> of its change into the action head (the diffusion transformer that outputs arm motions). Gradient ascent, NPO and SSD concentrate their change there; SalUn spreads it the way learning does. Representation-level drift is still being computed.</p>
+  </section>
   <section class="gu-sec" id="salun-probe">
     <h2>SalUn removes the behaviour but only part of the knowledge</h2>
     <p>Rollouts on B fail completely after SalUn, but B's probe loss moves only
       <b class="gu-num" data-draw="ratioLo" data-source="unlearning" data-field="probe_forget_ratio" data-where="variant=salun-1e-5">—</b> to
       <b class="gu-num" data-draw="ratioHi" data-source="unlearning" data-field="probe_forget_ratio" data-where="variant=salun-1e-4">—</b> of the way
-      from the model before unlearning to the retrain oracle. The policy may still hold much of what it learned on B. That residue is what the stream benchmark's relapse metric is designed to detect.</p>
+      from the model before unlearning to the retrain oracle. The fixed SSD moves it only
+      <b class="gu-num" data-draw="ssdRatio" data-source="unlearning" data-field="probe_forget_ratio" data-where="variant=ssd-retain">—</b> of the way. The policy may still hold much of what it learned on B. That residue is what the stream benchmark's relapse metric is designed to detect.</p>
     <div class="gu-legend">
       <span><i data-swatch="0"></i>SalUn lr 1e-5</span><span><i data-swatch="1"></i>SalUn lr 3e-5</span><span><i data-swatch="2"></i>SalUn lr 1e-4</span><span><i data-swatch="ref"></i>Before unlearning and retrain oracle</span>
     </div>
@@ -191,15 +221,16 @@
 
   <section class="gu-sec" id="videos">
     <h2>What the rollouts look like</h2>
-    <p>The same initial scene (initial state 0) for each model. After SalUn the robot still opens the drawer (A) but no longer puts the bowl on the stove (B). After gradient ascent it fails both.</p>
-    <div class="gu-videos"><div class="gu-vrow"><p class="gu-vlabel">Before unlearning (L_A → L_B)</p><figure class="gu-vid"><video src="videos/before_A_init00_ok.mp4" muted loop autoplay playsinline preload="metadata"></video><figcaption>Task A <span class="gu-pill" data-o="Clean forget">success</span></figcaption></figure><figure class="gu-vid"><video src="videos/before_B_init00_ok.mp4" muted loop autoplay playsinline preload="metadata"></video><figcaption>Task B <span class="gu-pill" data-o="Clean forget">success</span></figcaption></figure></div><div class="gu-vrow"><p class="gu-vlabel">SalUn, lr 3e-5</p><figure class="gu-vid"><video src="videos/salun-3e-5_A_init00_ok.mp4" muted loop autoplay playsinline preload="metadata"></video><figcaption>Task A <span class="gu-pill" data-o="Clean forget">success</span></figcaption></figure><figure class="gu-vid"><video src="videos/salun-3e-5_B_init00_fail.mp4" muted loop autoplay playsinline preload="metadata"></video><figcaption>Task B <span class="gu-pill" data-o="Collapse">failure</span></figcaption></figure></div><div class="gu-vrow"><p class="gu-vlabel">Gradient ascent, lr 3e-5</p><figure class="gu-vid"><video src="videos/ga-3e-5_A_init00_fail.mp4" muted loop autoplay playsinline preload="metadata"></video><figcaption>Task A <span class="gu-pill" data-o="Collapse">failure</span></figcaption></figure><figure class="gu-vid"><video src="videos/ga-3e-5_B_init00_fail.mp4" muted loop autoplay playsinline preload="metadata"></video><figcaption>Task B <span class="gu-pill" data-o="Collapse">failure</span></figcaption></figure></div><div class="gu-vrow"><p class="gu-vlabel">SSD, α 10</p><figure class="gu-vid"><video src="videos/ssd-10_A_init00_ok.mp4" muted loop autoplay playsinline preload="metadata"></video><figcaption>Task A <span class="gu-pill" data-o="Clean forget">success</span></figcaption></figure><figure class="gu-vid"><video src="videos/ssd-10_B_init00_ok.mp4" muted loop autoplay playsinline preload="metadata"></video><figcaption>Task B <span class="gu-pill" data-o="Clean forget">success</span></figcaption></figure></div></div>
+    <p>The same initial scene (initial state 0) for each model. After SalUn or the fixed SSD the robot still opens the drawer (A) but no longer puts the bowl on the stove (B). After gradient ascent it fails both.</p>
+    <div class="gu-videos"><div class="gu-vrow"><p class="gu-vlabel">Before unlearning (L_A → L_B)</p><figure class="gu-vid"><video src="videos/before_A_init00_ok.mp4" muted loop autoplay playsinline preload="metadata"></video><figcaption>Task A <span class="gu-pill" data-o="Clean forget">success</span></figcaption></figure><figure class="gu-vid"><video src="videos/before_B_init00_ok.mp4" muted loop autoplay playsinline preload="metadata"></video><figcaption>Task B <span class="gu-pill" data-o="Clean forget">success</span></figcaption></figure></div><div class="gu-vrow"><p class="gu-vlabel">SalUn, lr 3e-5</p><figure class="gu-vid"><video src="videos/salun-3e-5_A_init00_ok.mp4" muted loop autoplay playsinline preload="metadata"></video><figcaption>Task A <span class="gu-pill" data-o="Clean forget">success</span></figcaption></figure><figure class="gu-vid"><video src="videos/salun-3e-5_B_init00_fail.mp4" muted loop autoplay playsinline preload="metadata"></video><figcaption>Task B <span class="gu-pill" data-o="Collapse">failure</span></figcaption></figure></div><div class="gu-vrow"><p class="gu-vlabel">Gradient ascent, lr 3e-5</p><figure class="gu-vid"><video src="videos/ga-3e-5_A_init00_fail.mp4" muted loop autoplay playsinline preload="metadata"></video><figcaption>Task A <span class="gu-pill" data-o="Collapse">failure</span></figcaption></figure><figure class="gu-vid"><video src="videos/ga-3e-5_B_init00_fail.mp4" muted loop autoplay playsinline preload="metadata"></video><figcaption>Task B <span class="gu-pill" data-o="Collapse">failure</span></figcaption></figure></div><div class="gu-vrow"><p class="gu-vlabel">SSD, fixed (retain reference)</p><figure class="gu-vid"><video src="videos/ssd-retain_A_init00_ok.mp4" muted loop autoplay playsinline preload="metadata"></video><figcaption>Task A <span class="gu-pill" data-o="Clean forget">success</span></figcaption></figure><figure class="gu-vid"><video src="videos/ssd-retain_B_init00_fail.mp4" muted loop autoplay playsinline preload="metadata"></video><figcaption>Task B <span class="gu-pill" data-o="Collapse">failure</span></figcaption></figure></div></div>
   </section>
   <section class="gu-sec" id="limits">
     <h2>Limits of these numbers</h2>
     <ul>
       <li>One stream step only (learn A, learn B, forget B). The full benchmark runs a five-task stream with repeated learn and unlearn operations.</li>
       <li>Each unlearning variant was evaluated with one seed of 50 rollouts. The learning results use two seeds.</li>
-      <li>The run used the code of Nov 4 on an RTX A6000 machine. The cluster runs (96 GB Blackwell and 48 GB MIG slices) have not finished yet.</li>
+      <li>The run used the code of Nov 11 on an RTX A6000 machine. The cluster runs (96 GB Blackwell and 48 GB MIG slices) have not finished yet.</li>
+      <li>Weight drift is measured; representation drift (feature similarity, policy divergence) failed on the diverged checkpoints and is being recomputed. Ten more low learning-rate variants and VLA-Forget are still to run.</li>
       <li>Hyperparameters are a first grid (three learning rates or three SSD thresholds), not tuned.</li>
     </ul>
     <details>
@@ -208,6 +239,9 @@
         <dt>SR (success rate)</dt><dd>Fraction of 50 simulated rollouts that complete the task within 300 control steps.</dd>
         <dt>Gap to oracle</dt><dd>Mean absolute difference in success rate on A and B between the unlearned model and the retrain oracle (L<sub>A</sub>, which never saw B). Zero is ideal.</dd>
         <dt>Probe forget ratio</dt><dd>(probe loss on B after unlearning − before) ÷ (oracle's probe loss on B − before). 0 means nothing changed and 1 means B's loss matches a model that never learned B.</dd>
+        <dt>Share of τ<sub>B</sub> undone</dt><dd>Minus the projection of the unlearning update onto τ<sub>B</sub>, the weight change from learning B. 100% would mean unlearning exactly reversed it.</dd>
+        <dt>Distance to oracle (weights)</dt><dd>‖θ<sub>unlearned</sub> − θ<sub>oracle</sub>‖ ÷ ‖τ<sub>B</sub>‖. 1 is where the model was before unlearning, 0 is the oracle.</dd>
+        <dt>Share in action head</dt><dd>Fraction of the update's squared size that falls in the diffusion-transformer action head rather than the backbone layers being trained.</dd>
         <dt>Probe loss</dt><dd>GR00T's flow-matching training loss on 32 fixed frames of a task, with fixed noise, so values are comparable across checkpoints.</dd>
       </dl>
     </details>
@@ -222,32 +256,45 @@
       <li><a href="data/learning_probe.csv">learning_probe.csv</a>: probe loss per task during L<sub>A</sub> and L<sub>B</sub></li>
       <li><a href="data/unlearning_probe.csv">unlearning_probe.csv</a>: probe loss during SalUn unlearning</li>
       <li><a href="data/references.csv">references.csv</a>: retrain oracle and pre-unlearning model</li>
+      <li><a href="data/drift_reference.csv">drift_reference.csv</a>: weight drift of learning A, learning B and a random direction</li>
     </ul>
   </section>
   <footer class="gu-foot">Calibration run of the <a href="https://github.com/pvd6048/vla-unlearning">vla-unlearning</a> benchmark (GR00T N1.6 continual learning and unlearning on LIBERO-Goal). Part of my work with <a href="https://borthakurayon.github.io">Prof. Ayon Borthakur</a> at IIT Guwahati.</footer>
 </div>
 
 <script type="text/csv" data-id="unlearning">
-variant,method,setting,outcome,sr_retain_A,A_ci_low,A_ci_high,sr_forget_B,B_ci_low,B_ci_high,forget_efficacy,retain_ratio,oracle_gap,p_forget_vs_parent,probe_forget_ratio,probe_B_final,train_minutes,peak_gpu_gb,note
-salun-1e-4,SalUn,lr 1e-4,Clean forget,0.98,0.895,0.996,0.0,0,0.071,1.0,0.98,0.0,1.0e-27,0.558,1.4568,19.6,34.9,updated 50% of weights (saliency mask)
-salun-1e-5,SalUn,lr 1e-5,Clean forget,0.94,0.838,0.979,0.0,0,0.071,1.0,0.94,0.02,1.0e-27,0.411,1.0762,19.6,34.9,updated 50% of weights (saliency mask)
-salun-3e-5,SalUn,lr 3e-5,Clean forget,1.0,0.929,1.0,0.0,0,0.071,1.0,1.0,0.01,1.0e-27,0.495,1.2927,19.8,34.9,updated 50% of weights (saliency mask)
-ssd-10,SSD,α 10,No effect,1.0,0.929,1.0,0.98,0.895,0.996,0.0,1.0,0.5,1.0e+00,0.001,0.0125,,,dampened 0.50% of weights
-ssd-20,SSD,α 20,No effect,1.0,0.929,1.0,0.98,0.895,0.996,0.0,1.0,0.5,1.0e+00,0.0,0.0109,,,dampened 0.13% of weights
-ssd-5,SSD,α 5,No effect,1.0,0.929,1.0,0.98,0.895,0.996,0.0,1.0,0.5,1.0e+00,0.003,0.0179,,,dampened 2.03% of weights
-ga-1e-4,Gradient ascent,lr 1e-4,Collapse,0.0,0,0.071,0.0,0,0.071,1.0,0.0,0.49,1.0e-27,,,18.7,33.4,training diverged (probe loss ~1e6-1e13)
-ga-1e-5,Gradient ascent,lr 1e-5,Collapse,0.0,0,0.071,0.0,0,0.071,1.0,0.0,0.49,1.0e-27,,,18.7,33.4,training diverged (probe loss ~1e6-1e13)
-ga-3e-5,Gradient ascent,lr 3e-5,Collapse,0.0,0,0.071,0.0,0,0.071,1.0,0.0,0.49,1.0e-27,,,18.4,33.4,training diverged (probe loss ~1e6-1e13)
-graddiff-1e-4,GradDiff,lr 1e-4,Collapse,0.0,0,0.071,0.0,0,0.071,1.0,0.0,0.49,1.0e-27,,,30.5,33.4,training diverged (probe loss ~1e6-1e13)
-graddiff-1e-5,GradDiff,lr 1e-5,Collapse,0.0,0,0.071,0.0,0,0.071,1.0,0.0,0.49,1.0e-27,,,29.5,33.4,training diverged (probe loss ~1e6-1e13)
-graddiff-3e-5,GradDiff,lr 3e-5,Collapse,0.0,0,0.071,0.0,0,0.071,1.0,0.0,0.49,1.0e-27,,,29.9,33.4,training diverged (probe loss ~1e6-1e13)
-purge,Purge (no-op baseline),-,Baseline,1.0,0.929,1.0,0.98,0.895,0.996,0.0,1.0,0.5,1.0e+00,,,,,
-npo-1e-4,NPO,lr 1e-4,Failed to run,,,,,,,,,,,,,,,OOM on 48 GB
-npo-1e-5,NPO,lr 1e-5,Failed to run,,,,,,,,,,,,,,,OOM on 48 GB
-npo-3e-5,NPO,lr 3e-5,Failed to run,,,,,,,,,,,,,,,OOM on 48 GB
-npo-3e-5-beta1,NPO,"lr 3e-5, β 1",Failed to run,,,,,,,,,,,,,,,OOM on 48 GB
-vlaforget-2e-4,VLA-Forget,lr 2e-4,Failed to run,,,,,,,,,,,,,,,batching bug
-vlaforget-5e-5,VLA-Forget,lr 5e-5,Failed to run,,,,,,,,,,,,,,,batching bug
+variant,method,setting,outcome,sr_retain_A,A_ci_low,A_ci_high,sr_forget_B,B_ci_low,B_ci_high,oracle_gap,probe_forget_ratio,train_minutes,update_size_rel,proj_on_tauB,cos_tauB,dist_to_oracle,fisher_B_over_A,dit_share,probe_B_final,probe_A_final,note
+salun-1e-4,SalUn,lr 1e-4,Clean forget,0.98,0.895,0.996,0.0,0,0.071,0.0,0.558,19.6,0.253,-0.00414,-0.0164,1.03,0.853,0.754,1.4568,0.0084,updated 50% of weights (saliency mask)
+salun-1e-5,SalUn,lr 1e-5,Clean forget,0.94,0.838,0.979,0.0,0,0.071,0.02,0.411,19.6,0.0692,-0.00134,-0.0193,1,0.838,0.783,1.0762,0.0171,updated 50% of weights (saliency mask)
+salun-3e-5,SalUn,lr 3e-5,Clean forget,1.0,0.929,1.0,0.0,0,0.071,0.01,0.495,19.8,0.111,-0.0022,-0.0198,1,0.844,0.771,1.2927,0.0093,updated 50% of weights (saliency mask)
+ssd-retain-adaptive,SSD,"adaptive α, retain reference (fixed)",Partial,1.0,0.929,1.0,0.14,0.07,0.262,0.08,0.054,,1.51,-0.0393,-0.026,1.79,5.25,0.977,0.1495,0.0207,dampened 3.8% of weights
+ssd-a10,SSD,"α 10, original",No effect,1.0,0.929,1.0,0.98,0.895,0.996,0.5,0.001,,,,,,,,0.0125,0.0077,dampened 0.5% of weights
+ssd-retain-a10,SSD,"α 10, retain reference (fixed)",Clean forget,1.0,0.929,1.0,0.0,0,0.071,0.01,0.073,,1.75,-0.054,-0.0309,1.99,4.09,0.965,0.1993,0.0295,dampened 5.4% of weights
+ssd-a20,SSD,"α 20, original",No effect,1.0,0.929,1.0,0.98,0.895,0.996,0.5,0.0,,,,,,,,0.0109,0.0075,dampened 0.1% of weights
+ssd-a5,SSD,"α 5, original",No effect,1.0,0.929,1.0,0.98,0.895,0.996,0.5,0.003,,,,,,,,0.0179,0.0098,dampened 2.0% of weights
+ssd-all-a5,SSD,"α 5, reference: all data",No effect,0.98,0.895,0.996,0.94,0.838,0.979,0.47,-0.0,,0,0,,1,,,0.0106,0.0075,dampened no weights at this setting
+ssd-retain-a50-l0.1,SSD,"α 50, λ 0.1, retain reference (fixed)",No effect,1.0,0.929,1.0,1.0,0.929,1.0,0.51,0.016,,1.01,-0.0173,-0.0171,1.41,11.8,0.988,0.0514,0.0099,dampened 1.5% of weights
+ssd-retain,SSD,"α 5, retain reference (fixed)",Clean forget,1.0,0.929,1.0,0.0,0,0.071,0.01,0.108,,2.24,-0.0957,-0.0427,2.41,2.29,0.929,0.2906,0.0503,dampened 9.9% of weights
+ga-1e-4,Gradient ascent,lr 1e-4,Collapse,0.0,0,0.071,0.0,0,0.071,0.49,,18.7,0.62,-0.00137,-0.00222,1.18,0.596,0.881,,,training diverged (probe loss above 100)
+ga-1e-5,Gradient ascent,lr 1e-5,Collapse,0.0,0,0.071,0.0,0,0.071,0.49,,18.7,0.204,-0.00127,-0.00622,1.02,0.572,0.96,,,training diverged (probe loss above 100)
+ga-1e-6,Gradient ascent,lr 1e-6,Collapse,0.0,0,0.071,0.0,0,0.071,0.49,,12.5,0.0614,-0.000362,-0.0059,1,0.716,0.907,54.4555,39.7918,
+ga-1e-7,Gradient ascent,lr 1e-7,No effect,0.9,0.786,0.957,0.96,0.865,0.989,0.52,0.026,12.5,0.00606,-2.05e-05,-0.00339,1,0.886,0.919,0.0789,0.0402,
+ga-3e-5,Gradient ascent,lr 3e-5,Collapse,0.0,0,0.071,0.0,0,0.071,0.49,,18.4,0.261,-0.00139,-0.00532,1.03,0.582,0.89,,,training diverged (probe loss above 100)
+ga-3e-7,Gradient ascent,lr 3e-7,Partial,0.12,0.056,0.238,0.0,0,0.071,0.43,0.577,26.9,0.0235,-3.13e-05,-0.00133,1,0.794,0.904,1.505,0.6936,
+graddiff-1e-4,GradDiff,lr 1e-4,Collapse,0.0,0,0.071,0.0,0,0.071,0.49,,30.5,0.409,-6.85e-05,-0.000168,1.08,0.894,0.72,,,training diverged (probe loss above 100)
+graddiff-1e-5,GradDiff,lr 1e-5,Collapse,0.0,0,0.071,0.0,0,0.071,0.49,,29.5,0.172,-0.000237,-0.00137,1.01,0.952,0.951,,,training diverged (probe loss above 100)
+graddiff-1e-6,GradDiff,lr 1e-6,Collapse,0.06,0.021,0.162,0.0,0,0.071,0.46,,20.2,0.0518,-0.000105,-0.00203,1,1.01,0.887,63.8388,0.7864,
+graddiff-1e-7,GradDiff,lr 1e-7,No effect,1.0,0.929,1.0,0.94,0.838,0.979,0.48,0.011,20.2,0.00374,9.94e-07,0.000266,1,1.19,0.938,0.0385,0.009,
+graddiff-3e-5,GradDiff,lr 3e-5,Collapse,0.0,0,0.071,0.0,0,0.071,0.49,,29.9,0.218,-0.000154,-0.000706,1.02,0.954,0.858,,,training diverged (probe loss above 100)
+graddiff-3e-7,GradDiff,lr 3e-7,Partial,0.68,0.542,0.792,0.46,0.33,0.596,0.38,0.399,20.3,0.0191,7.98e-05,0.00419,1,1.04,0.916,1.0436,0.0588,
+npo-1e-4,NPO,lr 1e-4,Collapse,0.0,0,0.071,0.0,0,0.071,0.49,,17.8,0.0963,-0.000347,-0.0036,1,0.779,0.926,19.1054,17.3667,
+npo-1e-5,NPO,lr 1e-5,Collapse,0.0,0,0.071,0.0,0,0.071,0.49,,38.7,0.0378,4.4e-07,1.17e-05,1,0.789,0.95,4.5367,3.2707,
+npo-1e-6,NPO,lr 1e-6,Collapse,0.0,0,0.071,0.9,0.786,0.957,0.94,,17.8,0.0241,-2.82e-05,-0.00117,1,0.799,0.952,1.6024,1.1569,"lost the kept task, not the forgotten one: under investigation"
+npo-3e-5,NPO,lr 3e-5,Collapse,0.0,0,0.071,0.0,0,0.071,0.49,,17.7,0.0627,-0.000111,-0.00176,1,0.768,0.94,11.2485,9.4008,
+npo-3e-5-beta1,NPO,"lr 3e-5, β 1",Collapse,0.0,0,0.071,0.02,0.004,0.105,0.5,,17.8,0.0455,-6.46e-05,-0.00142,1,0.811,0.937,1.1121,0.7503,
+purge,Purge (no-op baseline),-,Baseline,1.0,0.929,1.0,0.98,0.895,0.996,0.5,,,,,,,,,,,
+vlaforget-2e-4,VLA-Forget,lr 2e-4,Failed to run,,,,,,,,,,,,,,,,,,out of GPU memory on a shared 48 GB GPU; needs the 96 GB GPU
+vlaforget-5e-5,VLA-Forget,lr 5e-5,Failed to run,,,,,,,,,,,,,,,,,,out of GPU memory on a shared 48 GB GPU; needs the 96 GB GPU
 </script>
 <script type="text/csv" data-id="learning_sr">
 model,task,eval_seed,successes,episodes,sr,ci_low,ci_high
@@ -386,6 +433,12 @@ model,role,sr_A,sr_B,probe_A,probe_B
 L_A (never saw B),retrain oracle,0.98,0.0,0.00372,2.60261
 L_A → L_B,before unlearning,1.0,0.98,0.00746,0.01064
 </script>
+<script type="text/csv" data-id="drift_reference">
+drift,size_rel_tauB,cos_tauB,fisher_B_over_A,dit_share
+Learning A (tauA),1.06,0.0668,0.788,0.747
+Learning B (tauB),1,1,0.806,0.783
+Random direction,,-1.88e-05,0.82,0.837
+</script>
 <script>
   // Minimal stand-in for the dashboard runtime: embedded CSVs, colours, and redraw on resize.
   window.dash = (function () {
@@ -437,13 +490,13 @@ L_A → L_B,before unlearning,1.0,0.98,0.00746,0.01064
     i.style.background = k === 'ref' ? 'var(--cds-chart-reference)' : dash.colors[+k];
   });
 
-  function drawValue(name, src, field, where) {
+  function drawValue(name, src, field, where, fmt) {
     dash.draw(name, (el) => {
       const d = dash.data(src);
       if (d.status !== 'ok') { el.textContent = '—'; return; }
       const [k, v] = where.split('=');
       const row = d.data.find((r) => r[k] === v);
-      el.textContent = row ? gu.f2(+row[field]) : '—';
+      el.textContent = row && row[field] !== '' ? (fmt ? fmt(+row[field]) : gu.f2(+row[field])) : '—';
     });
   }
   drawValue('parentB', 'references', 'sr_B', 'role=before unlearning');
@@ -451,6 +504,15 @@ L_A → L_B,before unlearning,1.0,0.98,0.00746,0.01064
   drawValue('salunA', 'unlearning', 'sr_retain_A', 'variant=salun-3e-5');
   drawValue('ratioLo', 'unlearning', 'probe_forget_ratio', 'variant=salun-1e-5');
   drawValue('ratioHi', 'unlearning', 'probe_forget_ratio', 'variant=salun-1e-4');
+  drawValue('ssdB', 'unlearning', 'sr_forget_B', 'variant=ssd-retain');
+  drawValue('ssdA', 'unlearning', 'sr_retain_A', 'variant=ssd-retain');
+  drawValue('ssdRatio', 'unlearning', 'probe_forget_ratio', 'variant=ssd-retain');
+  drawValue('salunCos', 'unlearning', 'cos_tauB', 'variant=salun-3e-5', (v) => d3.format('.3f')(v));
+  drawValue('rndCos', 'drift_reference', 'cos_tauB', 'drift=Random direction', (v) => d3.format('.5f')(v));
+  drawValue('tauCos', 'drift_reference', 'cos_tauB', 'drift=Learning A (tauA)', (v) => d3.format('.3f')(v));
+  drawValue('tauBDit', 'drift_reference', 'dit_share', 'drift=Learning B (tauB)', (v) => d3.format('.0%')(v));
+  drawValue('salunUndo', 'unlearning', 'proj_on_tauB', 'variant=salun-3e-5', (v) => d3.format('.1%')(-v));
+  drawValue('ssdUndo', 'unlearning', 'proj_on_tauB', 'variant=ssd-retain', (v) => d3.format('.1%')(-v));
 
   dash.draw('learnTable', (tb) => {
     const d = dash.data('learning_sr');
@@ -576,6 +638,51 @@ L_A → L_B,before unlearning,1.0,0.98,0.00746,0.01064
     }
   });
 
+
+  dash.draw('oracleDist', (el) => {
+    const d = dash.data('unlearning');
+    if (d.status !== 'ok') { gu.failed(el, d.status); return; }
+    el.replaceChildren();
+    const rows = [{ label: 'Before unlearning', v: 1, ref: true },
+      ...d.data.filter((r) => r.outcome === 'Clean forget' && r.dist_to_oracle !== '').map((r) => ({ label: `${r.method}, ${r.setting}`, v: +r.dist_to_oracle })),
+      { label: 'Retrain oracle', v: 0, ref: true }];
+    const W = el.clientWidth, band = 30, H = rows.length * band + 30;
+    const svg = d3.select(el).append('svg').attr('width', '100%').attr('height', H).attr('viewBox', `0 0 ${W} ${H}`)
+      .attr('role', 'img').attr('aria-label', 'Weight-space distance to the retrain oracle for each method that forgets B cleanly');
+    const probe = svg.append('text').attr('opacity', 0);
+    let ml = 0; rows.forEach((r) => { probe.text(r.label); ml = Math.max(ml, probe.node().getComputedTextLength()); });
+    probe.remove(); ml = Math.min(ml + 12, W * 0.5);
+    const x = d3.scaleLinear().domain([0, Math.max(2.5, d3.max(rows, (r) => r.v))]).range([ml, W - 40]);
+    const y = d3.scaleBand().domain(rows.map((r) => r.label)).range([4, H - 26]).paddingInner(0.3);
+    svg.append('g').attr('class', 'gu-grid').attr('transform', `translate(0,${H - 26})`).call(d3.axisBottom(x).ticks(5).tickSize(-(H - 30)).tickFormat(''));
+    svg.append('g').attr('transform', `translate(0,${H - 26})`).call(d3.axisBottom(x).ticks(5));
+    svg.append('line').attr('x1', x(1)).attr('x2', x(1)).attr('y1', 0).attr('y2', H - 26).style('stroke', 'var(--cds-chart-reference)').attr('stroke-dasharray', '4 3');
+    const g = svg.selectAll('g.row').data(rows).join('g').attr('class', 'row').attr('transform', (r) => `translate(0,${y(r.label)})`);
+    g.append('text').attr('x', ml - 8).attr('y', y.bandwidth() / 2).attr('dy', '0.32em').attr('text-anchor', 'end').text((r) => r.label).style('font-style', (r) => (r.ref ? 'italic' : null));
+    g.append('rect').attr('x', ml).attr('height', y.bandwidth()).attr('width', (r) => Math.max(1.5, x(r.v) - ml))
+      .style('fill', (r) => (r.ref ? 'var(--cds-chart-reference)' : dash.colors[1])).attr('opacity', (r) => (r.ref ? 0.6 : 1));
+    g.append('text').attr('x', (r) => x(r.v) + 6).attr('y', y.bandwidth() / 2).attr('dy', '0.32em').text((r) => d3.format('.2f')(r.v));
+  });
+
+  dash.draw('driftTable', (tb) => {
+    const d = dash.data('unlearning');
+    tb.replaceChildren();
+    if (d.status !== 'ok') return;
+    for (const r of d.data.filter((x) => x.update_size_rel !== '')) {
+      const tr = document.createElement('tr');
+      tr.setAttribute('data-key', encodeURIComponent(r.variant));
+      const cell = (txt, right) => { const td = document.createElement('td'); if (right) td.className = 'gu-r'; td.textContent = txt; tr.appendChild(td); return td; };
+      cell(r.method); cell(r.setting);
+      const o = cell(''); const p = document.createElement('span'); p.className = 'gu-pill'; p.setAttribute('data-o', r.outcome); p.textContent = r.outcome; o.appendChild(p);
+      const f = (v, fmt) => (v === '' ? '–' : fmt(+v));
+      cell(f(r.update_size_rel, d3.format('.3~g')), true);
+      cell(f(r.proj_on_tauB, (v) => d3.format('.2~%')(-v)), true);
+      cell(f(r.cos_tauB, d3.format('.3~g')), true);
+      cell(f(r.dist_to_oracle, d3.format('.2f')), true);
+      cell(f(r.dit_share, d3.format('.0%')), true);
+      tb.appendChild(tr);
+    }
+  });
   dash.draw('salunProbe', (el) => {
     const d = dash.data('unlearning_probe'), ref = dash.data('references');
     if (d.status !== 'ok' || ref.status !== 'ok') { gu.failed(el, d.status === 'ok' ? ref.status : d.status); return; }
